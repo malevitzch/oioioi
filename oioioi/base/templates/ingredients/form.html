@@ -44,6 +44,20 @@
                     </label>
                 </div>
             {% endfor %}
+        {% elif field|is_select %}
+            {% if inline %}
+                {% if field.errors %}
+                    {{ field | add_class:"form-select" | add_class:"is-invalid" | add_class:"me-sm-2" | add_class:"mb-2" }}
+                {% else %}
+                    {{ field | add_class:"form-select" | add_class:"me-sm-2" | add_class:"mb-2" }}
+                {% endif %}
+            {% else %}
+                {% if field.errors %}
+                    {{ field | add_class:"form-select" | add_class:"is-invalid" }}
+                {% else %}
+                    {{ field | add_class:"form-select" }}
+                {% endif %}
+            {% endif %}
         {% else %}
             {% if inline %}
                 {% if field.errors %}
