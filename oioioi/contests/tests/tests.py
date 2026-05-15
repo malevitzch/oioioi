@@ -1,8 +1,10 @@
 # pylint: disable=abstract-method
 
+import io
 import os
 import re
 import urllib.parse
+import zipfile
 from datetime import UTC, datetime, timedelta  # pylint: disable=E0611
 
 import bs4
@@ -70,6 +72,7 @@ from oioioi.problems.models import (
     Problem,
     ProblemAttachment,
     ProblemPackage,
+    ProblemSite,
     ProblemStatement,
 )
 from oioioi.programs.controllers import ProgrammingContestController
@@ -1186,6 +1189,7 @@ class TestRejudgeView(TestCase):
         "test_contest",
         "test_full_package",
         "test_problem_instance",
+        "test_extra_problem",
         "test_submission",
     ]
 
@@ -1193,14 +1197,16 @@ class TestRejudgeView(TestCase):
         self.assertTrue(self.client.login(username="test_admin"))
         self.contest = Contest.objects.get()
         self.client.get(f"/c/{self.contest.pk}/")
-        self.pi = ProblemInstance.objects.filter(contest__isnull=False).first()
+        # We take an existing Submission for the test.
+        self.submission = Submission.objects.filter(problem_instance__contest__isnull=False).first()
+        self.assertIsNotNone(self.submission)
+        self.pi = self.submission.problem_instance
 
     def _rejudge_url(self):
         return reverse("rejudge_all_submissions_for_problem", args=(self.pi.id,))
 
     def test_rejudge_view_date_filter(self):
-        submission = Submission.objects.filter(problem_instance=self.pi).first()
-        sub_date = submission.date
+        sub_date = self.submission.date
 
         # Date range that includes the submission
         date_from = (sub_date - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M")
@@ -1225,6 +1231,22 @@ class TestRejudgeView(TestCase):
         response = self.client.get(self._rejudge_url(), {"last_only": "on"})
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "submission")
+
+    def test_rejudge_multiple_problems_preview(self):
+        extra_pi = ProblemInstance.objects.filter(contest=self.contest).exclude(id=self.pi.id).first()
+        self.assertIsNotNone(extra_pi)
+
+        user = User.objects.get(username="test_user")
+        Submission.objects.create(problem_instance=extra_pi, user=user, status="OK")
+
+        response = self.client.get(
+            reverse("rejudge_multiple_problems"),
+            {"ids": f"{self.pi.id},{extra_pi.id}"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "rejudge 2")
+        self.assertContains(response, self.pi.short_name)
+        self.assertContains(response, extra_pi.short_name)
 
     def test_rejudge_post_triggers_rejudge(self):
         self.pi.needs_rejudge = True
@@ -3379,6 +3401,112 @@ class TestManagingProblemsFromAnotherContest(TestCase):
             for url, data in post_urls_and_data:
                 response = self.client.post(url, data=data, follow=True)
                 self.assertEqual(response.status_code, 400)
+
+
+class TestDownloadingProblemPackages(TestCase, TestStreamingMixin):
+    fixtures = [
+        "test_users",
+        "test_contest",
+        "test_full_package",
+        "test_problem_instance",
+    ]
+
+    def test_download_packages_action(self):
+        self.assertTrue(self.client.login(username="test_admin"))
+        self.client.get("/c/c/")
+
+        contest = Contest.objects.get(id="c")
+        round1 = Round.objects.get(id=1)
+
+        first_problem = Problem.objects.get(id=1)
+        ProblemPackage.objects.create(
+            problem=first_problem,
+            contest=contest,
+            package_file=ContentFile(b"package-one", name="package-one.zip"),
+            status="OK",
+        )
+
+        second_problem = Problem.create(
+            legacy_name="Second problem",
+            short_name="sum2",
+            controller_name=first_problem.controller_name,
+            contest=contest,
+        )
+        second_problem_instance = ProblemInstance.objects.create(
+            problem=second_problem,
+            round=round1,
+            contest=contest,
+            short_name="zad2",
+        )
+        ProblemPackage.objects.create(
+            problem=second_problem,
+            contest=contest,
+            package_file=ContentFile(b"package-two", name="package-two.zip"),
+            status="OK",
+        )
+
+        download_url = reverse("download_problems_packages") + f"?ids=1,{second_problem_instance.id}"
+
+        response = self.client.get(download_url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Files that will be downloaded")
+        self.assertContains(response, "sum.zip")
+        self.assertContains(response, "sum2.zip")
+
+        response = self.client.post(download_url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/zip")
+
+        content = self.streamingContent(response)
+        with zipfile.ZipFile(io.BytesIO(content), "r") as archive:
+            self.assertEqual(sorted(archive.namelist()), ["sum.zip", "sum2.zip"])
+            self.assertEqual(archive.read("sum.zip"), b"package-one")
+            self.assertEqual(archive.read("sum2.zip"), b"package-two")
+
+    def test_not_downloadable_quizzes(self):
+        self.assertTrue(self.client.login(username="test_admin"))
+        self.client.get("/c/c/")
+
+        contest = Contest.objects.get(id="c")
+        round1 = Round.objects.get(id=1)
+
+        packaged_problem = Problem.objects.get(id=1)
+        ProblemSite.objects.get_or_create(problem=packaged_problem, defaults={"url_key": "packaged-problem"})
+        ProblemPackage.objects.create(
+            problem=packaged_problem,
+            contest=contest,
+            package_file=ContentFile(b"packaged-problem", name="packaged-problem.zip"),
+            status="OK",
+        )
+
+        missing_package_problem = Problem.create(
+            legacy_name="Quiz without package",
+            short_name="quiz1",
+            controller_name=packaged_problem.controller_name,
+            contest=contest,
+        )
+        ProblemSite.objects.get_or_create(problem=missing_package_problem, defaults={"url_key": "quiz-without-package"})
+        missing_package_instance = ProblemInstance.objects.create(
+            problem=missing_package_problem,
+            round=round1,
+            contest=contest,
+            short_name="zad-quiz",
+        )
+
+        post_data = {
+            "ids": f"1,{missing_package_instance.id}",
+        }
+
+        response = self.client.get(reverse("download_problems_packages") + f"?ids={post_data['ids']}")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Files that will be downloaded")
+        self.assertContains(response, "sum.zip")
+        self.assertContains(response, "Files that cannot be downloaded")
+        self.assertContains(response, "Quiz without package")
+
+        response = self.client.post(reverse("download_problems_packages") + f"?ids={post_data['ids']}")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/zip")
 
 
 class TestAssigningProblemsToARound(TestCase):
