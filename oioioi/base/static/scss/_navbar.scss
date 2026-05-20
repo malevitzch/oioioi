@@ -269,7 +269,7 @@ body {
 // Extra-small screens
 // * Username/login text gets hidden (only icon)
 // * Navbar padding gets removed
-@include media-breakpoint-down(sm) {
+@media (max-width: 575.98px)  {
   .oioioi-navbar {
     padding: 0;
     > .oioioi-navbar__user .username {
