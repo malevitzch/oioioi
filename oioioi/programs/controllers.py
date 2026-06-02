@@ -52,6 +52,7 @@ from oioioi.programs.problem_instance_utils import (
     get_language_by_extension,
 )
 from oioioi.programs.utils import (
+    compute_score_lowered_reason,
     filter_model_submissions,
     form_field_id_for_langs,
     get_extension,
@@ -717,7 +718,7 @@ class ProgrammingProblemController(ProblemController):
                 {
                     "tests": tests_records,
                     "report": gr,
-                    "has_dependency": bool(gr.dependency_prereqs),
+                    "score_lowered_reason": compute_score_lowered_reason(tests_list, gr),
                 }
             )
 

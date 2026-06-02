@@ -7,6 +7,7 @@ from django.conf import settings
 from django.core.exceptions import PermissionDenied
 from django.shortcuts import get_object_or_404
 from django.urls import reverse
+from django.utils.translation import gettext as _
 
 from oioioi.base.utils import make_html_link
 from oioioi.contests.scores import IntegerScore, ScoreValue
@@ -72,6 +73,42 @@ def min_group_scorer(test_results):
     status = aggregate_statuses([result["status"] for result in sorted_results])
 
     return score, max_score, status
+
+
+def compute_score_lowered_reason(test_reports, group_report, max_listed=3):
+    """Return a tooltip string explaining why a group's score is below its
+    maximum, or ``None`` if no explanation should be shown.
+
+    The result combines (when applicable) a list of in-group tests that did
+    not earn full marks and the existing prerequisite-subtask dependency
+    message. ``None`` is returned when the score equals the max, when the
+    score/max are undefined (e.g. ACM-style scoring), or when neither reason
+    applies.
+    """
+    score = group_report.score
+    max_score = group_report.max_score
+    if score is None or max_score is None or score >= max_score:
+        return None
+
+    failing = [t.test_name for t in test_reports if t.score is not None and t.max_score is not None and t.score < t.max_score]
+
+    parts = []
+    if failing:
+        listed = failing[:max_listed]
+        remaining = len(failing) - len(listed)
+        if len(failing) == 1:
+            parts.append(_("Score lowered due to test %(name)s result.") % {"name": listed[0]})
+        elif remaining == 0:
+            parts.append(_("Score lowered due to tests: %(names)s.") % {"names": ", ".join(listed)})
+        else:
+            parts.append(_("Score lowered due to tests: %(names)s and %(count)d more.") % {"names": ", ".join(listed), "count": remaining})
+
+    if group_report.score_affected_by_dependency and group_report.dependency_prereqs:
+        parts.append(_("Score reduced due to results in prerequisite subtask(s): %(prereqs)s") % {"prereqs": group_report.dependency_prereqs})
+
+    if not parts:
+        return None
+    return " ".join(parts)
 
 
 def discrete_test_scorer(test, result):
@@ -187,7 +224,7 @@ def get_extension(file_name):
 
 def get_submittable_languages():
     submittable_languages = settings.SUBMITTABLE_LANGUAGES
-    for _, lang_config in submittable_languages.items():
+    for lang_config in submittable_languages.values():
         lang_config.setdefault("type", "main")
     return submittable_languages
 

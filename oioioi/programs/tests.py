@@ -3,6 +3,7 @@ import re
 import urllib
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta  # pylint: disable=E0611
+from types import SimpleNamespace
 
 import pytest
 import six
@@ -1118,6 +1119,74 @@ class TestScorers(TestCase):
             (359, 630, "WA"),
             utils.sum_score_aggregator(self.g_results_unequal_max_scores),
         )
+
+
+class TestComputeScoreLoweredReason(TestCase):
+    @staticmethod
+    def _test(name, score, max_score=100):
+        return SimpleNamespace(
+            test_name=name,
+            score=None if score is None else IntegerScore(score),
+            max_score=None if max_score is None else IntegerScore(max_score),
+        )
+
+    @staticmethod
+    def _group(score, max_score, *, affected=False, prereqs=""):
+        return SimpleNamespace(
+            score=None if score is None else IntegerScore(score),
+            max_score=None if max_score is None else IntegerScore(max_score),
+            score_affected_by_dependency=affected,
+            dependency_prereqs=prereqs,
+        )
+
+    def test_returns_none_when_score_is_full(self):
+        tests = [self._test("a", 100), self._test("b", 100)]
+        self.assertIsNone(utils.compute_score_lowered_reason(tests, self._group(100, 100)))
+
+    def test_returns_none_when_score_is_undefined(self):
+        # ACM-style: both score and max_score are None.
+        tests = [self._test("a", None, None), self._test("b", None, None)]
+        self.assertIsNone(utils.compute_score_lowered_reason(tests, self._group(None, None)))
+        self.assertIsNone(utils.compute_score_lowered_reason(tests, self._group(None, 100)))
+        self.assertIsNone(utils.compute_score_lowered_reason(tests, self._group(50, None)))
+
+    def test_single_failing_test(self):
+        tests = [self._test("a", 100), self._test("b", 0), self._test("c", 100)]
+        reason = utils.compute_score_lowered_reason(tests, self._group(0, 100))
+        self.assertEqual(reason, "Score lowered due to test b result.")
+
+    def test_multiple_failing_tests_within_cap(self):
+        tests = [self._test("a", 0), self._test("b", 50), self._test("c", 100)]
+        reason = utils.compute_score_lowered_reason(tests, self._group(150, 300))
+        self.assertEqual(reason, "Score lowered due to tests: a, b.")
+
+    def test_more_than_three_failing_tests_truncates(self):
+        tests = [self._test(f"t{i}", 0) for i in range(5)]
+        reason = utils.compute_score_lowered_reason(tests, self._group(0, 500))
+        self.assertEqual(reason, "Score lowered due to tests: t0, t1, t2 and 2 more.")
+
+    def test_dependency_only(self):
+        # Group score lowered by dependency, but no in-group test fails.
+        tests = [self._test("a", 100), self._test("b", 100)]
+        reason = utils.compute_score_lowered_reason(tests, self._group(0, 100, affected=True, prereqs="1, 2"))
+        self.assertEqual(
+            reason,
+            "Score reduced due to results in prerequisite subtask(s): 1, 2",
+        )
+
+    def test_dependency_and_failing_tests_combined(self):
+        tests = [self._test("a", 100), self._test("b", 50)]
+        reason = utils.compute_score_lowered_reason(tests, self._group(0, 100, affected=True, prereqs="1"))
+        self.assertEqual(
+            reason,
+            "Score lowered due to test b result. Score reduced due to results in prerequisite subtask(s): 1",
+        )
+
+    def test_no_failing_tests_no_dependency_returns_none(self):
+        # Pathological: group score below max but no test is sub-full and no
+        # dependency is in play. We deliberately show nothing in that case.
+        tests = [self._test("a", 100), self._test("b", 100)]
+        self.assertIsNone(utils.compute_score_lowered_reason(tests, self._group(50, 100)))
 
 
 class TestReportDisplay(TestCase):
