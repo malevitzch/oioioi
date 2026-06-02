@@ -218,7 +218,6 @@ TEMPLATES = [
                 'oioioi.problems.processors.can_add_to_problemset_processor',
                 'oioioi.questions.processors.navbar_tip_processor',
                 'oioioi.analytics.processors.analytics_processor',
-                'oioioi.portals.processors.portal_processor',
                 'oioioi.status.processors.status_processor',
                 'oioioi.programs.processors.drag_and_drop_processor',
             ],
@@ -302,11 +301,6 @@ INSTALLED_APPS = (
     'oioioi._locale',
     'oioioi.interactive',
 
-    'oioioi.newsfeed',
-    'oioioi.teachers',
-    'oioioi.portals',
-    'oioioi.szkopul',
-
     'djsupervisor',
     'registration',
     'django_extensions',
@@ -355,7 +349,7 @@ CAPTCHA_FONT_SIZE = 64
 CAPTCHA_LETTER_ROTATION = (-70, 70)
 
 AUTHENTICATION_BACKENDS = (
-    'oioioi.teachers.auth.TeacherAuthBackend',
+    # 'oioioi.teachers.auth.TeacherAuthBackend',
     'django.contrib.auth.backends.ModelBackend',
     'oioioi.contests.auth.ContestPermissionsAuthBackend',
 )
