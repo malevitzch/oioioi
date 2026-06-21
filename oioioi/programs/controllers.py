@@ -1,6 +1,7 @@
 import hashlib
 import itertools
 import logging
+import re
 from operator import attrgetter  # pylint: disable=E0611
 
 from django import forms
@@ -694,20 +695,17 @@ class ProgrammingProblemController(ProblemController):
         # Sioworkers doesn't give us exit codes or signals explicitly. Neither does sio2jail.
         # This detection mechanism is similar to the one sioworkers uses to give a RE verdict:
         # https://github.com/sio2project/sioworkers/blob/55776ac98613ff2b11bd63397be536029616b9bb/sio/workers/executors.py#L670
-        signal_exit_msg = "process exited due to signal "
+        signal_exit_pattern = re.compile(r"^(?:process|program) exited due to signal (\d+)$")
+
         for group_name, tests in itertools.groupby(test_reports, attrgetter("test_group")):
             tests_list = list(tests)
-
             for test in tests_list:
                 test.generate_status = picontroller._out_generate_status(request, test)
                 all_outs_generated &= test.generate_status == "OK"
-                # Extract all error signals from the test report according to the format
-                if test.comment.startswith(signal_exit_msg):
-                    try:
-                        signal = int(test.comment[len(signal_exit_msg) :])
-                        signals_to_explain.add(signal)
-                    except ValueError:
-                        pass
+
+                if m := signal_exit_pattern.match(test.comment):
+                    signals_to_explain.add(int(m.group(1)))
+
                 if test.result_percentage_numerator and test.result_percentage_denominator:
                     test.result_percentage = f"""{round(test.result_percentage_numerator / test.result_percentage_denominator, 2):g}"""
 
