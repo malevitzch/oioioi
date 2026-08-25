@@ -54,7 +54,10 @@ If you want to split a date group, click the corresponding \
         gettext("now") + '</small></div>';
 
 
-    var DATEBOX_HEIGHT = parseInt($('.form-control').css('height'), 10) + 2;
+    // Use the rendered datebox height rather than the form-control height.
+    // The latter does not include the input-group contents and is no longer
+    // reliable with Bootstrap 5.
+    var DATEBOX_HEIGHT = 40;
     // a horizontal gap between round bars and datepickers
     var DATEBOX_GAP = 40;
     // a vertical gap used to separate datepickers with no date specified
@@ -356,7 +359,7 @@ If you want to split a date group, click the corresponding \
                 my_top = target_position;
                 overlapping = 0;
             }
-            $this.css({left: datebox_left, top: my_top});
+            $this.css({left: datebox_left - roundGroupLeft, top: my_top});
             set_width($this);
             if (my_date !== null) {
                 $this.children('.oioioi-timeline__connector').show();
@@ -587,7 +590,13 @@ If you want to split a date group, click the corresponding \
         $timeline.find('.date').each(function () {
             initDateTimePicker(this)
         })
-        
+
+        var rendered_datebox_height = $timeline
+            .find('.oioioi-timeline__datebox').first().outerHeight(true);
+        if (rendered_datebox_height) {
+            DATEBOX_HEIGHT = rendered_datebox_height;
+        }
+
         // connect equal dates
         create_groups();
 
