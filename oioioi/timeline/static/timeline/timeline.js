@@ -54,10 +54,7 @@ If you want to split a date group, click the corresponding \
         gettext("now") + '</small></div>';
 
 
-    // Use the rendered datebox height rather than the form-control height.
-    // The latter does not include the input-group contents and is no longer
-    // reliable with Bootstrap 5.
-    var DATEBOX_HEIGHT = 40;
+    var DATEBOX_HEIGHT = parseInt($('.form-control').css('height'), 10) + 2;
     // a horizontal gap between round bars and datepickers
     var DATEBOX_GAP = 40;
     // a vertical gap used to separate datepickers with no date specified
